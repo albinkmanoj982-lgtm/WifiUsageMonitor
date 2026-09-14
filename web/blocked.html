@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Access Policy — Website Blocked</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0e1217;
+      color: #e6edf3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .notice-box {
+      background: #151a21;
+      border: 1px solid #2b3340;
+      border-radius: 4px;
+      max-width: 500px;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    .notice-header {
+      background: #1d1819;
+      border-bottom: 1px solid #4a2125;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .warning-icon {
+      color: #f85149;
+      display: flex;
+      align-items: center;
+    }
+
+    .notice-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #ff7b72;
+      letter-spacing: -0.2px;
+      text-transform: uppercase;
+    }
+
+    .notice-body {
+      padding: 20px;
+    }
+
+    .notice-lead {
+      font-size: 13.5px;
+      color: #e6edf3;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+
+    .blocked-domain-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: #ff7b72;
+      background: #0b0e13;
+      padding: 3px 8px;
+      border-radius: 3px;
+      border: 1px solid #3c1e22;
+    }
+
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-bottom: 18px;
+      border: 1px solid #222936;
+    }
+
+    .meta-table tr {
+      border-bottom: 1px solid #1e2530;
+    }
+    .meta-table tr:last-child {
+      border-bottom: none;
+    }
+
+    .meta-table td {
+      padding: 7px 10px;
+    }
+
+    .meta-table td:first-child {
+      color: #8b949e;
+      width: 140px;
+      background: #11151c;
+      font-weight: 500;
+    }
+
+    .meta-table td:last-child {
+      color: #c9d1d9;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .btn {
+      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 4px;
+      font-size: 12.5px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+
+    .btn-primary {
+      background: #1f6feb;
+      color: #fff;
+      border-color: #388bfd;
+    }
+    .btn-primary:hover {
+      background: #2a7af3;
+    }
+
+    .btn-secondary {
+      background: #21262d;
+      color: #c9d1d9;
+      border-color: #363d47;
+    }
+    .btn-secondary:hover {
+      background: #30363d;
+      color: #fff;
+    }
+
+    .notice-footer {
+      padding: 10px 18px;
+      background: #11151c;
+      border-top: 1px solid #1e2530;
+      font-size: 11px;
+      color: #6e7681;
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="notice-box">
+    <div class="notice-header">
+      <div class="warning-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+        </svg>
+      </div>
+      <span class="notice-title">Network Policy Notice — Access Restricted</span>
+    </div>
+
+    <div class="notice-body">
+      <p class="notice-lead">
+        Access to <span class="blocked-domain-tag" id="blocked-domain-name">youtube.com</span> has been restricted by your network administrator in accordance with local firewall rules.
+      </p>
+
+      <table class="meta-table">
+        <tr>
+          <td>Enforcing System</td>
+          <td>WiFi Usage Monitor Firewall</td>
+        </tr>
+        <tr>
+          <td>Status Code</td>
+          <td style="color:#ff7b72;">403 FORBIDDEN / DNS SINKHOLE</td>
+        </tr>
+        <tr>
+          <td>Filter Action</td>
+          <td>Rule Enforced (Active List)</td>
+        </tr>
+        <tr>
+          <td>Network Gateway</td>
+          <td>192.168.137.1 (Mobile Hotspot)</td>
+        </tr>
+      </table>
+
+      <div class="btn-row">
+        <a href="http://localhost:8080/dashboard.html" class="btn btn-secondary">Open Dashboard</a>
+        <a href="https://www.google.com" target="_blank" class="btn btn-primary">Test Other Sites (Google)</a>
+      </div>
+    </div>
+
+    <div class="notice-footer">
+      <span>WiFi Usage Monitor System</span>
+      <span>Port 53 / 8081 Interceptor</span>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const domain = params.get('domain');
+    if (domain) {
+      document.getElementById('blocked-domain-name').textContent = domain;
+    }
+  </script>
+
+</body>
+</html>

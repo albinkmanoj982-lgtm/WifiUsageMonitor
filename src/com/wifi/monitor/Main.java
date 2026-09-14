@@ -1,30 +1,34 @@
 package com.wifi.monitor;
 
 import javax.swing.*;
+import java.awt.GraphicsEnvironment;
 import java.sql.Connection;
 
 public class Main {
 
     public static void main(String[] args) {
-        // Initialize Database and Tables
+        System.out.println("📶 Initializing WiFi Usage Monitor System...");
+
+        // Initialize Database tables & in-memory fallbacks
         DatabaseConnection.initializeDatabase();
 
-        // Test connection
-        Connection con = DatabaseConnection.getConnection();
+        // Start the Web API + Static File Server on port 8080
+        try {
+            ApiServer apiServer = new ApiServer();
+            apiServer.start();
+        } catch (Exception e) {
+            System.out.println("Warning: Could not start web server: " + e.getMessage());
+        }
 
-        if (con != null) {
-            System.out.println("Connected to MySQL Successfully. Launching Login Screen...");
-            
-            // Launch GUI on EDT
-            SwingUtilities.invokeLater(LoginSignupUI::new);
+        // Launch Swing GUI only if non-headless environment
+        if (!GraphicsEnvironment.isHeadless()) {
+            try {
+                SwingUtilities.invokeLater(LoginSignupUI::new);
+            } catch (Exception e) {
+                System.out.println("Notice: Swing UI launch skipped: " + e.getMessage());
+            }
         } else {
-            System.out.println("Connection Failed");
-            JOptionPane.showMessageDialog(null, 
-                    "Failed to connect to the MySQL database.\n" +
-                    "Please ensure XAMPP (MySQL) is running and the database 'wifi_usage_monitor' exists.", 
-                    "Database Connection Error", 
-                    JOptionPane.ERROR_MESSAGE);
-            System.exit(1);
+            System.out.println("ℹ️ Running in headless server mode. Web application active on http://localhost:8080");
         }
     }
 }
