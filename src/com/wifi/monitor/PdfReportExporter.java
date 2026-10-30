@@ -1,0 +1,326 @@
+package com.wifi.monitor;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Pure Java PDF generator for WiFi Usage Monitor audit reports.
+ * Compliant with ISO 32000-1 / PDF 1.4 specification without external dependencies.
+ */
+public class PdfReportExporter {
+
+    private static class PageData {
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+    }
+
+    public static void exportReport(File targetFile, String reportText, String periodLabel, String dateRange, String username) throws IOException {
+        List<String> rawLines = new ArrayList<>();
+        if (reportText != null) {
+            String[] split = reportText.split("\r?\n");
+            for (String s : split) rawLines.add(s);
+        }
+
+        // Standard Letter size: 612 x 792 points (72 points per inch)
+        final float PAGE_WIDTH = 612;
+        final float PAGE_HEIGHT = 792;
+        final float MARGIN_LEFT = 45;
+        final float MARGIN_RIGHT = 45;
+        final float MARGIN_TOP = 50;
+        final float MARGIN_BOTTOM = 45;
+        final float CONTENT_WIDTH = PAGE_WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
+
+        List<PageData> pages = new ArrayList<>();
+        PageData currentPage = new PageData();
+        pages.add(currentPage);
+
+        PrintWriter pw = new PrintWriter(new OutputStreamWriter(currentPage.stream, StandardCharsets.ISO_8859_1));
+
+        int pageNum = 1;
+        float y = PAGE_HEIGHT - MARGIN_TOP;
+
+        // Draw Cover / Top Header for Page 1
+        y = drawHeader(pw, PAGE_WIDTH, y, periodLabel, dateRange, username);
+
+        // Print lines
+        float lineHeight = 13f;
+        pw.println("BT");
+        pw.println("/F1 9 Tf"); // Courier 9pt for terminal audit log
+        pw.println("0.1 0.1 0.1 rg"); // Dark charcoal text
+
+        for (String line : rawLines) {
+            // Check if page break is needed
+            if (y < MARGIN_BOTTOM + 25) {
+                pw.println("ET");
+                drawFooter(pw, PAGE_WIDTH, MARGIN_BOTTOM, pageNum);
+                pw.flush();
+
+                pageNum++;
+                currentPage = new PageData();
+                pages.add(currentPage);
+                pw = new PrintWriter(new OutputStreamWriter(currentPage.stream, StandardCharsets.ISO_8859_1));
+                y = PAGE_HEIGHT - MARGIN_TOP;
+
+                // Draw compact header on subsequent pages
+                y = drawSubsequentHeader(pw, PAGE_WIDTH, y, pageNum);
+
+                pw.println("BT");
+                pw.println("/F1 9 Tf");
+                pw.println("0.1 0.1 0.1 rg");
+            }
+
+            // Clean line of non-printable or special chars
+            String sanitized = escapePdfString(line);
+            pw.println(String.format(java.util.Locale.US, "1 0 0 1 %.2f %.2f Tm", MARGIN_LEFT, y));
+            pw.println("(" + sanitized + ") Tj");
+            y -= lineHeight;
+        }
+
+        pw.println("ET");
+        drawFooter(pw, PAGE_WIDTH, MARGIN_BOTTOM, pageNum);
+        pw.flush();
+
+        // Now assemble full PDF structure
+        writePdfDocument(targetFile, pages, PAGE_WIDTH, PAGE_HEIGHT);
+    }
+
+    private static float drawHeader(PrintWriter pw, float pageWidth, float y, String periodLabel, String dateRange, String username) {
+        // Banner background rectangle (Navy Blue: #0D2137)
+        float bannerHeight = 85;
+        float bannerY = y - bannerHeight;
+        pw.println("0.05 0.13 0.22 rg"); // Dark Navy
+        pw.println(String.format(java.util.Locale.US, "0 %.2f %.2f %.2f re f", bannerY, pageWidth, bannerHeight));
+
+        // Accent top line (Cyan)
+        pw.println("0.22 0.55 0.99 RG");
+        pw.println("3 w");
+        pw.println(String.format(java.util.Locale.US, "0 %.2f m %.2f %.2f l S", y, pageWidth, y));
+
+        // Header Title Text
+        pw.println("BT");
+        pw.println("/F3 18 Tf"); // Helvetica-Bold
+        pw.println("1 1 1 rg"); // White
+        pw.println(String.format(java.util.Locale.US, "1 0 0 1 45 %.2f Tm", y - 30));
+        pw.println("(WiFi Usage Monitor - Audit Report) Tj");
+
+        // Subtitle Info
+        pw.println("/F2 10 Tf"); // Helvetica
+        pw.println("0.8 0.88 0.95 rg");
+        pw.println(String.format(java.util.Locale.US, "1 0 0 1 45 %.2f Tm", y - 48));
+        String sub = "Period: " + (periodLabel != null ? periodLabel : "Network Audit") +
+                "  |  Date: " + (dateRange != null ? dateRange : LocalDate.now().toString());
+        pw.println("(" + escapePdfString(sub) + ") Tj");
+
+        pw.println(String.format(java.util.Locale.US, "1 0 0 1 45 %.2f Tm", y - 64));
+        String gen = "Generated: " + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) +
+                "  |  Generated by: " + (username != null ? username : "Administrator");
+        pw.println("(" + escapePdfString(gen) + ") Tj");
+        pw.println("ET");
+
+        return bannerY - 25;
+    }
+
+    private static float drawSubsequentHeader(PrintWriter pw, float pageWidth, float y, int pageNum) {
+        // Compact banner
+        float bannerHeight = 35;
+        float bannerY = y - bannerHeight;
+        pw.println("0.05 0.13 0.22 rg");
+        pw.println(String.format(java.util.Locale.US, "0 %.2f %.2f %.2f re f", bannerY, pageWidth, bannerHeight));
+
+        pw.println("BT");
+        pw.println("/F3 11 Tf");
+        pw.println("1 1 1 rg");
+        pw.println(String.format(java.util.Locale.US, "1 0 0 1 45 %.2f Tm", y - 22));
+        pw.println("(WiFi Usage Monitor - Audit Report (Continued)) Tj");
+        pw.println("ET");
+
+        return bannerY - 20;
+    }
+
+    private static void drawFooter(PrintWriter pw, float pageWidth, float bottomY, int pageNum) {
+        // Footer divider rule
+        pw.println("0.8 0.82 0.85 RG");
+        pw.println("0.5 w");
+        pw.println(String.format(java.util.Locale.US, "45 %.2f m %.2f %.2f l S", bottomY + 12, pageWidth - 45, bottomY + 12));
+
+        pw.println("BT");
+        pw.println("/F2 8 Tf");
+        pw.println("0.5 0.5 0.5 rg");
+        pw.println(String.format(java.util.Locale.US, "1 0 0 1 45 %.2f Tm", bottomY));
+        pw.println("(CONFIDENTIAL - Network Traffic Log - WiFi Usage Monitor) Tj");
+
+        String pText = "Page " + pageNum;
+        pw.println(String.format(java.util.Locale.US, "1 0 0 1 %.2f %.2f Tm", pageWidth - 80, bottomY));
+        pw.println("(" + pText + ") Tj");
+        pw.println("ET");
+    }
+
+    private static String escapePdfString(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '(') sb.append("\\(");
+            else if (c == ')') sb.append("\\)");
+            else if (c == '\\') sb.append("\\\\");
+            else if (c >= 32 && c <= 126) sb.append(c);
+            else if (c == '\t') sb.append("    ");
+            else {
+                // Unicode arrows / box drawing replacements for clean PDF Courier output
+                if (c == '↓') sb.append("[DL]");
+                else if (c == '↑') sb.append("[UL]");
+                else if (c == '─' || c == '═' || c == '━') sb.append("-");
+                else if (c == '│' || c == '┃') sb.append("|");
+                else if (c == '┌' || c == '┐' || c == '└' || c == '┘' || c == '├' || c == '┤' || c == '┼') sb.append("+");
+                else if (c == '•' || c == '●') sb.append("*");
+                else sb.append(" ");
+            }
+        }
+        return sb.toString();
+    }
+
+    private static void writePdfDocument(File file, List<PageData> pages, float pageWidth, float pageHeight) throws IOException {
+        try (FileOutputStream fos = new FileOutputStream(file);
+             BufferedOutputStream bos = new BufferedOutputStream(fos)) {
+
+            List<Long> offsets = new ArrayList<>();
+            long currentOffset = 0;
+
+            // 1. Header
+            byte[] header = "%PDF-1.4\n%\u00E2\u00E3\u00CF\u00D3\n".getBytes(StandardCharsets.ISO_8859_1);
+            bos.write(header);
+            currentOffset += header.length;
+
+            int pageCount = pages.size();
+
+            // Object 1: Catalog
+            // Object 2: Pages
+            // Object 3..3+N-1: Page objects
+            // Object 3+N: Font F1 (Courier)
+            // Object 4+N: Font F2 (Helvetica)
+            // Object 5+N: Font F3 (Helvetica-Bold)
+            // Object 6+N .. 6+N+N-1: Content stream objects
+
+            int font1Obj = 3 + pageCount;
+            int font2Obj = 4 + pageCount;
+            int font3Obj = 5 + pageCount;
+            int firstContentObj = 6 + pageCount;
+
+            // Object 1: Catalog
+            offsets.add(currentOffset);
+            String cat = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+            byte[] catB = cat.getBytes(StandardCharsets.ISO_8859_1);
+            bos.write(catB);
+            currentOffset += catB.length;
+
+            // Object 2: Pages
+            offsets.add(currentOffset);
+            StringBuilder kids = new StringBuilder("[");
+            for (int i = 0; i < pageCount; i++) {
+                kids.append((3 + i)).append(" 0 R ");
+            }
+            kids.append("]");
+            String pagesObj = String.format(java.util.Locale.US,
+                    "2 0 obj\n<< /Type /Pages /Kids %s /Count %d >>\nendobj\n",
+                    kids.toString(), pageCount);
+            byte[] pagesB = pagesObj.getBytes(StandardCharsets.ISO_8859_1);
+            bos.write(pagesB);
+            currentOffset += pagesB.length;
+
+            // Page objects (3 to 3 + pageCount - 1)
+            for (int i = 0; i < pageCount; i++) {
+                offsets.add(currentOffset);
+                int contentObjId = firstContentObj + i;
+                String pageStr = String.format(java.util.Locale.US,
+                        "%d 0 obj\n<< /Type /Page /Parent 2 0 R\n" +
+                                "/MediaBox [0 0 %.2f %.2f]\n" +
+                                "/Resources << /Font << /F1 %d 0 R /F2 %d 0 R /F3 %d 0 R >> >>\n" +
+                                "/Contents %d 0 R\n>>\nendobj\n",
+                        (3 + i), pageWidth, pageHeight, font1Obj, font2Obj, font3Obj, contentObjId);
+                byte[] pB = pageStr.getBytes(StandardCharsets.ISO_8859_1);
+                bos.write(pB);
+                currentOffset += pB.length;
+            }
+
+            // Font F1: Courier
+            offsets.add(currentOffset);
+            String f1 = font1Obj + " 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>\nendobj\n";
+            byte[] f1B = f1.getBytes(StandardCharsets.ISO_8859_1);
+            bos.write(f1B);
+            currentOffset += f1B.length;
+
+            // Font F2: Helvetica
+            offsets.add(currentOffset);
+            String f2 = font2Obj + " 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
+            byte[] f2B = f2.getBytes(StandardCharsets.ISO_8859_1);
+            bos.write(f2B);
+            currentOffset += f2B.length;
+
+            // Font F3: Helvetica-Bold
+            offsets.add(currentOffset);
+            String f3 = font3Obj + " 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n";
+            byte[] f3B = f3.getBytes(StandardCharsets.ISO_8859_1);
+            bos.write(f3B);
+            currentOffset += f3B.length;
+
+            // Content streams
+            for (int i = 0; i < pageCount; i++) {
+                offsets.add(currentOffset);
+                byte[] streamBytes = pages.get(i).stream.toByteArray();
+                String streamHeader = String.format(java.util.Locale.US,
+                        "%d 0 obj\n<< /Length %d >>\nstream\n",
+                        (firstContentObj + i), streamBytes.length);
+                byte[] shB = streamHeader.getBytes(StandardCharsets.ISO_8859_1);
+                bos.write(shB);
+                currentOffset += shB.length;
+
+                bos.write(streamBytes);
+                currentOffset += streamBytes.length;
+
+                byte[] streamEnd = "\nendstream\nendobj\n".getBytes(StandardCharsets.ISO_8859_1);
+                bos.write(streamEnd);
+                currentOffset += streamEnd.length;
+            }
+
+            // Cross-reference table (xref)
+            long startXref = currentOffset;
+            int totalObjs = offsets.size() + 1; // including object 0
+
+            StringBuilder xref = new StringBuilder();
+            xref.append("xref\n0 ").append(totalObjs).append("\n");
+            xref.append("0000000000 65535 f \n");
+            for (Long off : offsets) {
+                xref.append(String.format(java.util.Locale.US, "%010d 00000 n \n", off));
+            }
+            xref.append("trailer\n<< /Size ").append(totalObjs).append(" /Root 1 0 R >>\n");
+            xref.append("startxref\n").append(startXref).append("\n%%EOF\n");
+
+            byte[] xrefB = xref.toString().getBytes(StandardCharsets.ISO_8859_1);
+            bos.write(xrefB);
+            bos.flush();
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        File f = new File("test_report.pdf");
+        String sample = "====================================================\n" +
+                "         WIFI USAGE MONITOR - DAILY REPORT          \n" +
+                "         Report Date: 2026-10-26\n" +
+                "====================================================\n\n" +
+                "Device #1: Laptop (Albin)\n" +
+                "   [+] Upload:   0.07 GB\n" +
+                "   [+] Download: 3.24 GB\n" +
+                "   [*] Total:    3.31 GB\n\n" +
+                "----------------------------------------------------\n" +
+                "GRAND TOTAL UPLOAD:   0.07 GB\n" +
+                "GRAND TOTAL DOWNLOAD: 3.24 GB\n" +
+                "NETWORK TOTAL USAGE:  3.31 GB\n" +
+                "----------------------------------------------------\n";
+        exportReport(f, sample, "Daily Audit", "2026-10-26", "admin");
+        System.out.println("Test PDF created successfully, size=" + f.length() + " bytes");
+    }
+}
