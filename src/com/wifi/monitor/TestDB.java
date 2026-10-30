@@ -18,6 +18,8 @@ public class TestDB {
                 System.out.println("❌ Database Test Failed: Connection is null. Please make sure MySQL Server is running!");
                 return;
             }
+            System.out.println("✅ Database Connection Successful!\n");
+
             try (PreparedStatement pstmt = conn.prepareStatement(query);
                  ResultSet rs = pstmt.executeQuery()) {
 

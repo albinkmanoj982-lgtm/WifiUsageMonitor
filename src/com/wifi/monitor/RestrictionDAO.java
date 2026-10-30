@@ -60,6 +60,32 @@ public class RestrictionDAO {
         // Spotify ecosystem
         List<String> spList = java.util.Arrays.asList("spotify.com", "scdn.co");
         SERVICE_ALIASES.put("spotify.com", spList);
+
+        // Discord ecosystem
+        List<String> dcList = java.util.Arrays.asList("discord.com", "discordapp.com", "discord.gg", "discordapp.net");
+        SERVICE_ALIASES.put("discord.com", dcList);
+        SERVICE_ALIASES.put("discord.gg", dcList);
+
+        // Reddit ecosystem
+        List<String> rdList = java.util.Arrays.asList("reddit.com", "redd.it", "redditstatic.com", "redditmedia.com");
+        SERVICE_ALIASES.put("reddit.com", rdList);
+
+        // Twitch ecosystem
+        List<String> twiList = java.util.Arrays.asList("twitch.tv", "ttvnw.net", "jtvnw.net");
+        SERVICE_ALIASES.put("twitch.tv", twiList);
+
+        // Steam ecosystem
+        List<String> stList = java.util.Arrays.asList("steampowered.com", "steamcommunity.com", "steamcontent.com");
+        SERVICE_ALIASES.put("steampowered.com", stList);
+
+        // WhatsApp Web
+        List<String> waList = java.util.Arrays.asList("whatsapp.com", "web.whatsapp.com", "whatsapp.net");
+        SERVICE_ALIASES.put("whatsapp.com", waList);
+        SERVICE_ALIASES.put("web.whatsapp.com", waList);
+
+        // Roblox ecosystem
+        List<String> rbList = java.util.Arrays.asList("roblox.com", "rbxcdn.com");
+        SERVICE_ALIASES.put("roblox.com", rbList);
     }
 
     public static String cleanDomain(String raw) {
@@ -143,6 +169,7 @@ public class RestrictionDAO {
         // Avoid duplicate in memory
         inMemoryRestrictions.removeIf(r -> r.getDomainName().equalsIgnoreCase(restriction.getDomainName()));
         inMemoryRestrictions.add(0, restriction);
+        syncHostsFileWithCurrentRestrictions();
     }
 
     public void toggleRestrictionStatus(int restrictionId, String newStatus) {
@@ -164,6 +191,7 @@ public class RestrictionDAO {
                 break;
             }
         }
+        syncHostsFileWithCurrentRestrictions();
     }
 
     public void setDomainStatus(String domainName, String newStatus) {
@@ -184,6 +212,7 @@ public class RestrictionDAO {
                 r.setStatus(newStatus);
             }
         }
+        syncHostsFileWithCurrentRestrictions();
     }
 
     public void removeRestriction(int restrictionId) {
@@ -199,6 +228,24 @@ public class RestrictionDAO {
         }
 
         inMemoryRestrictions.removeIf(r -> r.getRestrictionId() == restrictionId);
+        syncHostsFileWithCurrentRestrictions();
+    }
+
+    public List<String> getAllBlockedDomains() {
+        List<String> blocked = new ArrayList<>();
+        for (WebsiteRestriction r : getAllRestrictions()) {
+            if (r.isBlocked()) {
+                String d = cleanDomain(r.getDomainName());
+                if (!d.isEmpty() && !blocked.contains(d)) {
+                    blocked.add(d);
+                }
+            }
+        }
+        return blocked;
+    }
+
+    public void syncHostsFileWithCurrentRestrictions() {
+        WindowsFirewallManager.syncHostsFile(getAllBlockedDomains(), SERVICE_ALIASES);
     }
 
     public List<WebsiteRestriction> getAllRestrictions() {

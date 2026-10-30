@@ -16,12 +16,15 @@ if %errorLevel% neq 0 (
 )
 
 echo [*] Removing any old rules...
+
 netsh advfirewall firewall delete rule name="WiFiMonitor_DNS" >nul 2>&1
+netsh advfirewall firewall delete rule name="WiFiMonitor_DNS_TCP" >nul 2>&1
 netsh advfirewall firewall delete rule name="WiFiMonitor_Proxy" >nul 2>&1
 netsh advfirewall firewall delete rule name="WiFiMonitor_Web" >nul 2>&1
 
-echo [*] Adding rule for UDP Port 53 (DNS Interceptor)...
+echo [*] Adding rule for Port 53 (DNS Interceptor UDP ^& TCP)...
 netsh advfirewall firewall add rule name="WiFiMonitor_DNS" dir=in action=allow protocol=UDP localport=53 profile=any
+netsh advfirewall firewall add rule name="WiFiMonitor_DNS_TCP" dir=in action=allow protocol=TCP localport=53 profile=any
 
 echo [*] Adding rule for TCP Port 8081 (HTTP/HTTPS Proxy Interceptor)...
 netsh advfirewall firewall add rule name="WiFiMonitor_Proxy" dir=in action=allow protocol=TCP localport=8081 profile=any

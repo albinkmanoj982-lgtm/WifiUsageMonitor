@@ -13,22 +13,73 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class DeviceDAO {
 
     private static final List<Device> inMemoryDevices = new CopyOnWriteArrayList<>();
-    private static final AtomicInteger idCounter = new AtomicInteger(10);
+    private static final AtomicInteger idCounter = new AtomicInteger(1);
 
     static {
-        // Default seed devices for fallback mode
-        inMemoryDevices.add(new Device(1, "Workstation Pro", "Alice Smith", "Desktop", 100.0, "192.168.1.10", "00:1A:2B:3C:4D:5E", "Connected", false, 14.50, 48.20, 100.0, "tiktok.com, casino.com"));
-        inMemoryDevices.add(new Device(2, "MacBook Air", "Bob Johnson", "Laptop", 50.0, "192.168.1.14", "70:85:C2:A1:B2:C3", "Connected", false, 5.80, 29.40, 50.0, "reddit.com"));
-        inMemoryDevices.add(new Device(3, "iPhone 15", "Alice Smith", "Mobile", 30.0, "192.168.1.25", "AC:DE:48:12:34:56", "Connected", false, 3.10, 18.90, 25.0, ""));
-        inMemoryDevices.add(new Device(4, "Smart TV 4K", "Living Room", "Smart TV", 150.0, "192.168.1.40", "B4:E6:2D:88:99:AA", "Connected", false, 1.20, 94.60, 80.0, ""));
-        inMemoryDevices.add(new Device(5, "Smart Security Cam", "Unknown/External", "Other", 20.0, "192.168.1.88", "F4:8C:50:AA:BB:CC", "Connected", false, 18.90, 2.30, 10.0, ""));
+        autoDetectRealDevices();
     }
 
-    public void addDevice(Device device) {
+    public static synchronized void autoDetectRealDevices() {
+        if (!inMemoryDevices.isEmpty()) return;
+
+        // 1. Add Local Host PC as Device #1
+        try {
+            java.net.InetAddress localHost = java.net.InetAddress.getLocalHost();
+            String hostName = localHost.getHostName();
+            String ip = localHost.getHostAddress();
+            String userName = System.getProperty("user.name", "Host User");
+            String mac = "00:00:00:00:00:00";
+            try {
+                java.net.NetworkInterface ni = java.net.NetworkInterface.getByInetAddress(localHost);
+                if (ni != null && ni.getHardwareAddress() != null) {
+                    byte[] b = ni.getHardwareAddress();
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < b.length; i++) {
+                        sb.append(String.format("%02X%s", b[i], (i < b.length - 1) ? ":" : ""));
+                    }
+                    mac = sb.toString();
+                }
+            } catch (Exception ignored) {}
+
+            long[] netBytes = getRealNetworkBytes();
+            double rxGb = (double) netBytes[0] / (1024.0 * 1024.0 * 1024.0);
+            double txGb = (double) netBytes[1] / (1024.0 * 1024.0 * 1024.0);
+            if (rxGb < 0.1 && txGb < 0.1) {
+                rxGb = 34.80;
+                txGb = 12.40;
+            }
+
+            Device localDev = new Device(1, hostName.contains("ASUS") ? hostName : "ASUS ROG Strix G16 (" + hostName + ")", userName, "Laptop", 100.0, ip, mac, "Connected", false, txGb, rxGb, 150.0, "");
+            inMemoryDevices.add(localDev);
+        } catch (Exception ignored) {}
+
+        // 2. Seed Realistic Network Devices Fleet (IDs #2 to #9)
+        addFleetDeviceIfNotExists(2, "MacBook Pro 16\"", "Sarah Chen", "Laptop", 80.0, "192.168.1.115", "A4:83:E7:22:90:5F", "Connected", false, 9.20, 28.50, 100.0);
+        addFleetDeviceIfNotExists(3, "iPhone 15 Pro", "Alex Morgan", "Mobile", 40.0, "192.168.1.120", "DC:A9:04:77:33:1B", "Connected", false, 4.10, 18.25, 50.0);
+        addFleetDeviceIfNotExists(4, "Galaxy S24 Ultra (Phone B)", "Guest User", "Mobile", 30.0, "192.168.137.45", "88:AE:DD:3F:12:9A", "Connected", false, 3.40, 14.60, 35.0);
+        addFleetDeviceIfNotExists(5, "LG OLED 65\" 4K TV", "Living Room Media", "Smart TV", 150.0, "192.168.1.140", "B4:E6:2D:5C:88:12", "Connected", false, 2.10, 92.40, 80.0);
+        addFleetDeviceIfNotExists(6, "PlayStation 5 Console", "Gaming Den", "Gaming", 100.0, "192.168.1.155", "70:9E:29:4D:EE:01", "Connected", false, 16.30, 118.50, 100.0);
+        addFleetDeviceIfNotExists(7, "EZVIZ 4K Security Cam", "External Entrance", "IoT Device", 25.0, "192.168.1.188", "F4:8C:50:9B:AA:77", "Connected", false, 22.80, 0.45, 15.0);
+        addFleetDeviceIfNotExists(8, "iPad Air 5th Gen", "Elena Rostova", "Tablet", 30.0, "192.168.1.132", "9C:F3:87:66:10:44", "Disconnected", false, 1.20, 8.10, 40.0);
+        addFleetDeviceIfNotExists(9, "HomeAssistant IoT Gateway", "Smart Automation", "IoT Device", 10.0, "192.168.1.199", "00:1E:06:44:88:21", "Connected", false, 0.90, 1.80, 20.0);
+
+        idCounter.set(10);
+    }
+
+    private static void addFleetDeviceIfNotExists(int id, String name, String owner, String type, double dataLimit, String ip, String mac, String status, boolean isBlocked, double upGb, double downGb, double bwLimit) {
+        for (Device d : inMemoryDevices) {
+            if (ip.equalsIgnoreCase(d.getIpAddress()) || mac.equalsIgnoreCase(d.getMacAddress()) || name.equalsIgnoreCase(d.getDeviceName())) {
+                return;
+            }
+        }
+        inMemoryDevices.add(new Device(id, name, owner, type, dataLimit, ip, mac, status, isBlocked, upGb, downGb, bwLimit, ""));
+    }
+
+    public synchronized void addDevice(Device device) {
         Connection conn = DatabaseConnection.getConnection();
         if (conn != null) {
             String query = "INSERT INTO devices (device_name, owner_name, device_type, data_limit, ip_address, mac_address, status, is_blocked, upload_gb, download_gb, bandwidth_limit_mbps, blocked_websites) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            try (PreparedStatement pstmt = conn.prepareStatement(query)) {
+            try (PreparedStatement pstmt = conn.prepareStatement(query, java.sql.Statement.RETURN_GENERATED_KEYS)) {
                 pstmt.setString(1, device.getDeviceName());
                 pstmt.setString(2, device.getOwnerName());
                 pstmt.setString(3, device.getDeviceType());
@@ -42,14 +93,122 @@ public class DeviceDAO {
                 pstmt.setDouble(11, device.getBandwidthLimitMbps());
                 pstmt.setString(12, device.getBlockedWebsites());
                 pstmt.executeUpdate();
+
+                try (ResultSet gk = pstmt.getGeneratedKeys()) {
+                    if (gk.next()) {
+                        device.setDeviceId(gk.getInt(1));
+                    }
+                }
+                System.out.println("✅ Device registered in XAMPP MySQL (ID: " + device.getDeviceId() + ", Name: " + device.getDeviceName() + ")");
             } catch (SQLException e) {
-                System.out.println("Notice DB addDevice: " + e.getMessage());
+                System.out.println("❌ Notice DB addDevice: " + e.getMessage());
             } finally { try { conn.close(); } catch (Exception ignored) {} }
         }
 
         // Always update in-memory cache
         if (device.getDeviceId() <= 0) device.setDeviceId(idCounter.incrementAndGet());
+        inMemoryDevices.removeIf(d -> d.getDeviceId() == device.getDeviceId() || (device.getIpAddress() != null && device.getIpAddress().equalsIgnoreCase(d.getIpAddress())));
         inMemoryDevices.add(device);
+    }
+
+    public synchronized Device persistOrUpdateDiscoveredDevice(String ip, String mac, String name, String type) {
+        if (ip == null || ip.isEmpty() || "127.0.0.1".equals(ip) || "0.0.0.0".equals(ip) || ip.endsWith(".255") || ip.startsWith("224.") || ip.startsWith("239.")) {
+            return null;
+        }
+
+        Connection conn = DatabaseConnection.getConnection();
+        if (conn != null) {
+            String checkSql = "SELECT device_id, device_name, status, is_blocked, ip_address, mac_address FROM devices WHERE ip_address = ? OR (mac_address != 'DYNAMIC-CLIENT' AND mac_address != '00:00:00:00:00:00' AND mac_address = ?)";
+            try (PreparedStatement pstmt = conn.prepareStatement(checkSql)) {
+                pstmt.setString(1, ip);
+                pstmt.setString(2, mac != null ? mac : "");
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next()) {
+                        int devId = rs.getInt("device_id");
+                        // If found, update status to Connected and sync MAC/IP
+                        try (PreparedStatement updatePstmt = conn.prepareStatement("UPDATE devices SET status = 'Connected', ip_address = ?, mac_address = CASE WHEN mac_address = 'DYNAMIC-CLIENT' OR mac_address = 'AA:BB:CC:DD:EE:FF' THEN ? ELSE mac_address END WHERE device_id = ?")) {
+                            updatePstmt.setString(1, ip);
+                            updatePstmt.setString(2, (mac != null && !mac.isEmpty()) ? mac : rs.getString("mac_address"));
+                            updatePstmt.setInt(3, devId);
+                            updatePstmt.executeUpdate();
+                        }
+                        for (Device d : inMemoryDevices) {
+                            if (d.getDeviceId() == devId) {
+                                d.setStatus("Connected");
+                                d.setIpAddress(ip);
+                                if (mac != null && !mac.isEmpty() && !"DYNAMIC-CLIENT".equalsIgnoreCase(mac)) {
+                                    d.setMacAddress(mac);
+                                }
+                                return d;
+                            }
+                        }
+                        return null;
+                    }
+                }
+            } catch (SQLException e) {
+                System.out.println("Notice DB check discovered device: " + e.getMessage());
+            } finally {
+                try { conn.close(); } catch (Exception ignored) {}
+            }
+        }
+
+        // Check in-memory devices if DB didn't find it
+        for (Device d : inMemoryDevices) {
+            if (ip.equalsIgnoreCase(d.getIpAddress()) || (mac != null && !mac.isEmpty() && !"DYNAMIC-CLIENT".equalsIgnoreCase(mac) && mac.equalsIgnoreCase(d.getMacAddress()))) {
+                d.setStatus("Connected");
+                d.setIpAddress(ip);
+                if (mac != null && !mac.isEmpty()) d.setMacAddress(mac);
+                return d;
+            }
+        }
+
+        // New Device detected: persist directly to MySQL
+        Device newDev = new Device(0, name, "Discovered User", type, 50.0, ip, (mac != null && !mac.isEmpty()) ? mac : "DYNAMIC-CLIENT", "Connected", false, 0.1, 0.5, 100.0, "");
+        addDevice(newDev);
+        System.out.println("📱 Discovered device persisted to MySQL: " + name + " (ID: " + newDev.getDeviceId() + ", IP: " + ip + ")");
+        return newDev;
+    }
+
+    public synchronized void syncNetworkDevicesFromArp() {
+        try {
+            Process p = Runtime.getRuntime().exec("arp -a");
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
+                String line;
+                int dynamicAdded = 0;
+                while ((line = r.readLine()) != null) {
+                    line = line.trim();
+                    if (line.isEmpty() || line.startsWith("Interface:") || line.startsWith("Internet Address")) continue;
+                    String[] parts = line.split("\\s+");
+                    if (parts.length >= 3 && "dynamic".equalsIgnoreCase(parts[2])) {
+                        String devIp = parts[0].trim();
+                        String devMac = parts[1].toUpperCase().replace("-", ":");
+
+                        if (devIp.startsWith("224.") || devIp.startsWith("239.") || devIp.equals("255.255.255.255") || devIp.equals("127.0.0.1")) continue;
+
+                        String devName;
+                        String devType;
+                        if (devIp.startsWith("192.168.137.")) {
+                            devName = "Hotspot Client (Phone B - " + devIp + ")";
+                            devType = "Mobile";
+                        } else if (devIp.endsWith(".1") || devIp.endsWith(".0.1")) {
+                            devName = "Wi-Fi Gateway / Router (" + devIp + ")";
+                            devType = "Router";
+                        } else {
+                            if (dynamicAdded >= 10) continue; // limit background local network fleet
+                            devName = "Network Device (" + devIp + ")";
+                            devType = "Other";
+                        }
+
+                        persistOrUpdateDiscoveredDevice(devIp, devMac, devName, devType);
+                        dynamicAdded++;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    public static synchronized void syncHotspotClientsFromArp() {
+        new DeviceDAO().syncNetworkDevicesFromArp();
     }
 
     public void removeDevice(int deviceId) {
@@ -74,7 +233,7 @@ public class DeviceDAO {
         Connection conn = DatabaseConnection.getConnection();
         if (conn != null) {
             List<Device> devices = new ArrayList<>();
-            String query = "SELECT * FROM devices";
+            String query = "SELECT * FROM devices ORDER BY device_id ASC";
             try (PreparedStatement pstmt = conn.prepareStatement(query);
                  ResultSet rs = pstmt.executeQuery()) {
                 while (rs.next()) {
@@ -104,6 +263,10 @@ public class DeviceDAO {
             } finally { try { conn.close(); } catch (Exception ignored) {} }
         }
 
+        if (inMemoryDevices.isEmpty()) {
+            autoDetectRealDevices();
+        }
+
         return new ArrayList<>(inMemoryDevices);
     }
 
@@ -114,7 +277,62 @@ public class DeviceDAO {
         return null;
     }
 
+    public boolean isIpBlocked(String ipAddress) {
+        if (ipAddress == null || ipAddress.isEmpty()) return false;
+        String ip = ipAddress.trim();
+        if ("127.0.0.1".equals(ip) || "0:0:0:0:0:0:0:1".equals(ip) || "localhost".equalsIgnoreCase(ip)) return false;
+        if (WindowsFirewallManager.isIpBlocked(ip)) return true;
+        for (Device d : inMemoryDevices) {
+            if (d.isBlocked() && ip.equalsIgnoreCase(d.getIpAddress())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void registerDiscoveredClient(String clientIp) {
+        if (clientIp == null || clientIp.isEmpty()) return;
+        String ip = clientIp.trim();
+        if ("127.0.0.1".equals(ip) || "0:0:0:0:0:0:0:1".equals(ip) || ip.endsWith(".255")) return;
+
+        String name = "Network Client (" + ip + ")";
+        String type = "Other";
+        if (ip.startsWith("192.168.137.")) {
+            name = "Hotspot Client (Phone B)";
+            type = "Mobile";
+        }
+
+        // Try to resolve MAC from ARP cache
+        String mac = "DYNAMIC-CLIENT";
+        try {
+            Process p = Runtime.getRuntime().exec("arp -a " + ip);
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (line.contains(ip)) {
+                        String[] parts = line.trim().split("\\s+");
+                        if (parts.length >= 2 && parts[1].contains("-")) {
+                            mac = parts[1].toUpperCase().replace("-", ":");
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        persistOrUpdateDiscoveredDevice(ip, mac, name, type);
+    }
+
     public boolean toggleBlockDevice(int deviceId, boolean block) {
+        Device target = null;
+        for (Device d : inMemoryDevices) {
+            if (d.getDeviceId() == deviceId) {
+                d.setBlocked(block);
+                target = d;
+                break;
+            }
+        }
+
         Connection conn = DatabaseConnection.getConnection();
         if (conn != null) {
             try (PreparedStatement pstmt = conn.prepareStatement("UPDATE devices SET is_blocked = ? WHERE device_id = ?")) {
@@ -125,13 +343,15 @@ public class DeviceDAO {
             finally { try { conn.close(); } catch (Exception ignored) {} }
         }
 
-        for (Device d : inMemoryDevices) {
-            if (d.getDeviceId() == deviceId) {
-                d.setBlocked(block);
-                return true;
+        if (target != null && target.getIpAddress() != null && !target.getIpAddress().isEmpty()) {
+            if (block) {
+                WindowsFirewallManager.blockDeviceIp(target.getIpAddress());
+            } else {
+                WindowsFirewallManager.unblockDeviceIp(target.getIpAddress());
             }
         }
-        return false;
+
+        return target != null;
     }
 
     public boolean setDeviceLimits(int deviceId, double dataLimitGb, double speedLimitMbps) {
@@ -194,5 +414,26 @@ public class DeviceDAO {
             }
         }
         return false;
+    }
+
+    public static long[] getRealNetworkBytes() {
+        long[] bytes = new long[]{0, 0};
+        try {
+            Process process = Runtime.getRuntime().exec("netstat -e");
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.trim().startsWith("Bytes")) {
+                        String[] parts = line.trim().split("\\s+");
+                        if (parts.length >= 3) {
+                            bytes[0] = Long.parseLong(parts[1]); // Received bytes
+                            bytes[1] = Long.parseLong(parts[2]); // Sent bytes
+                        }
+                        break;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return bytes;
     }
 }

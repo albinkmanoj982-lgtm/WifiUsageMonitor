@@ -11,8 +11,8 @@ echo.
 echo Now open Chrome or Edge on this laptop and visit:
 echo    http://youtube.com or http://chrome.com
 echo.
-echo You will immediately see the custom "Website Access Blocked" screen,
-echo and the real-time activity log will appear on http://localhost:8080/dashboard.html!
+echo You will immediately see the HTTP 403 Access Denied block notice,
+echo and the real-time activity log will appear in the Java Desktop Dashboard!
 echo.
 echo (To turn it off later, double-click disable_laptop_proxy.bat)
 echo ======================================================================

@@ -43,9 +43,15 @@ public class BlockedLogDAO {
     private static final int MAX_IN_MEMORY_LOGS = 200;
 
     static {
-        // Initial sample blocked events for demo visibility
-        String now = new SimpleDateFormat("HH:mm:ss").format(new Date());
-        inMemoryEvents.add(new BlockedEvent(idGenerator.getAndIncrement(), "gambling-site.com", "192.168.137.45", "Test Phone (Phone B)", now, "BLOCKED"));
+        // Initial sample blocked events for demo visibility across multiple network devices
+        long nowMs = System.currentTimeMillis();
+        SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss");
+
+        inMemoryEvents.add(new BlockedEvent(idGenerator.getAndIncrement(), "tiktok.com", "192.168.137.45", "Galaxy S24 Ultra (Phone B)", sdf.format(new Date(nowMs - 120000)), "BLOCKED"));
+        inMemoryEvents.add(new BlockedEvent(idGenerator.getAndIncrement(), "ads-tracker.network", "192.168.1.140", "LG OLED 65\" 4K TV", sdf.format(new Date(nowMs - 340000)), "BLOCKED"));
+        inMemoryEvents.add(new BlockedEvent(idGenerator.getAndIncrement(), "torrent-downloads.org", "192.168.1.155", "PlayStation 5 Console", sdf.format(new Date(nowMs - 680000)), "BLOCKED"));
+        inMemoryEvents.add(new BlockedEvent(idGenerator.getAndIncrement(), "gambling-site.com", "192.168.1.115", "MacBook Pro 16\"", sdf.format(new Date(nowMs - 1200000)), "BLOCKED"));
+        inMemoryEvents.add(new BlockedEvent(idGenerator.getAndIncrement(), "malware-host.net", "192.168.1.188", "EZVIZ 4K Security Cam", sdf.format(new Date(nowMs - 2400000)), "BLOCKED"));
     }
 
     public BlockedEvent recordBlockedRequest(String domainName, String clientIp, String deviceName, String action) {

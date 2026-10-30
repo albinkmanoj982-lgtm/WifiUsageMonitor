@@ -30,14 +30,15 @@ public class ApiServer {
         server.createContext("/api/blocking/events", new ApiHandler("/api/blocking/events"));
         server.createContext("/api/network/info",    new ApiHandler("/api/network/info"));
         server.createContext("/api/ai/anomalies",    new ApiHandler("/api/ai/anomalies"));
+        server.createContext("/api/database/status", new ApiHandler("/api/database/status"));
+        server.createContext("/api/admin/elevate",   new ApiHandler("/api/admin/elevate"));
 
         // Static Web Files from /web folder
         server.createContext("/", new StaticFileHandler());
 
         server.setExecutor(Executors.newCachedThreadPool());
         server.start();
-        System.out.println("✅ Web server started at http://localhost:" + PORT);
-        System.out.println("   Open your browser and go to: http://localhost:" + PORT);
+        System.out.println("✅ REST API service started on port " + PORT);
 
         // Start Network Filtering Engines
         try {
@@ -56,7 +57,7 @@ public class ApiServer {
     public void stop() {
         if (server != null) {
             server.stop(0);
-            System.out.println("Web server stopped.");
+            System.out.println("API service stopped.");
         }
         try { dnsFilterServer.stop(); } catch (Exception ignored) {}
         try { httpFilterProxy.stop(); } catch (Exception ignored) {}

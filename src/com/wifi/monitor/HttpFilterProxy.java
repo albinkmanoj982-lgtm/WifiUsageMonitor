@@ -29,7 +29,7 @@ public class HttpFilterProxy implements Runnable {
     public void start() {
         if (running) return;
         Thread thread = new Thread(this, "HttpFilterProxy-Worker");
-        thread.setDaemon(true);
+        thread.setDaemon(false);
         thread.start();
     }
 
@@ -116,24 +116,33 @@ public class HttpFilterProxy implements Runnable {
             }
 
             String clientIp = clientSocket.getInetAddress().getHostAddress();
+            deviceDAO.registerDiscoveredClient(clientIp);
+            String deviceName = resolveDeviceName(clientIp);
 
-            // Check if domain is blocked
-            if (restrictionDAO.isDomainBlocked(targetHost)) {
-                // BLOCKED -> Send 403 Forbidden with custom block page
-                String blockPage = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Access Blocked</title></head>"
-                        + "<body style=\"font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#0d1117;color:#f0f6fc;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;\">"
-                        + "<div style=\"background:#161b22;padding:36px;border:1px solid #30363d;border-radius:12px;text-align:center;max-width:440px;box-shadow:0 10px 30px rgba(0,0,0,0.5);\">"
-                        + "<div style=\"display:inline-flex;padding:12px;border-radius:50%;background:rgba(218,54,51,0.15);color:#f85149;margin-bottom:16px;\">"
-                        + "<svg width='32' height='32' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2'><circle cx='12' cy='12' r='10'></circle><line x1='4.93' y1='4.93' x2='19.07' y2='19.07'></line></svg></div>"
-                        + "<h2 style=\"color:#f85149;margin:0 0 10px;font-size:20px;\">Website Access Blocked</h2>"
-                        + "<p style=\"color:#8b949e;margin-bottom:18px;font-size:14px;\">Access to <code style=\"color:#fff;background:#0b0e14;padding:3px 6px;border-radius:4px;\">"
-                        + escapeHtml(targetHost) + "</code> is restricted by your network administrator.</p>"
-                        + "<div style=\"font-size:12px;color:#6e7681;border-top:1px solid #21262d;padding-top:14px;\">WiFi Usage Monitor &bull; Active Real-Time Protection</div>"
-                        + "</div></body></html>";
-
-                byte[] bodyBytes = blockPage.getBytes(StandardCharsets.UTF_8);
+            // 1. DEVICE BLOCKING ENFORCEMENT
+            if (deviceDAO.isIpBlocked(clientIp)) {
+                String body = "403 Forbidden: Device (" + clientIp + ") is blocked from Wi-Fi access by network administrator.\r\n";
+                byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
                 String header = "HTTP/1.1 403 Forbidden\r\n"
-                        + "Content-Type: text/html; charset=UTF-8\r\n"
+                        + "Content-Type: text/plain; charset=UTF-8\r\n"
+                        + "Content-Length: " + bodyBytes.length + "\r\n"
+                        + "Connection: close\r\n\r\n";
+
+                clientOut.write(header.getBytes(StandardCharsets.US_ASCII));
+                clientOut.write(bodyBytes);
+                clientOut.flush();
+
+                blockedLogDAO.recordBlockedRequest("ALL TRAFFIC (DEVICE BLOCKED)", clientIp, deviceName, "DEVICE BLOCKED");
+                clientSocket.close();
+                return;
+            }
+
+            // 2. Check if target website domain is blocked
+            if (restrictionDAO.isDomainBlocked(targetHost)) {
+                String body = "403 Forbidden: Access to " + targetHost + " is restricted by network administrator.\r\n";
+                byte[] bodyBytes = body.getBytes(StandardCharsets.UTF_8);
+                String header = "HTTP/1.1 403 Forbidden\r\n"
+                        + "Content-Type: text/plain; charset=UTF-8\r\n"
                         + "Content-Length: " + bodyBytes.length + "\r\n"
                         + "Connection: close\r\n\r\n";
 
@@ -142,7 +151,6 @@ public class HttpFilterProxy implements Runnable {
                 clientOut.flush();
 
                 // Log real-time event
-                String deviceName = resolveDeviceName(clientIp);
                 blockedLogDAO.recordBlockedRequest(targetHost, clientIp, deviceName, "BLOCKED");
 
                 clientSocket.close();
@@ -203,11 +211,6 @@ public class HttpFilterProxy implements Runnable {
             return "Hotspot Client (Phone B)";
         }
         return "Client (" + clientIp + ")";
-    }
-
-    private String escapeHtml(String s) {
-        if (s == null) return "";
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
     }
 
     public boolean isRunning() { return running; }

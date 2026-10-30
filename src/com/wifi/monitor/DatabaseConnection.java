@@ -123,48 +123,50 @@ public class DatabaseConnection {
 
     private static void seedSampleDataIfEmpty(Statement stmt) {
         try {
-            java.sql.ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM devices");
+            java.sql.ResultSet devRs = stmt.executeQuery("SELECT COUNT(*) FROM devices");
+            if (devRs.next() && devRs.getInt(1) <= 1) {
+                stmt.executeUpdate("INSERT INTO devices (device_id, device_name, owner_name, device_type, data_limit, ip_address, mac_address, status, is_blocked, upload_gb, download_gb, bandwidth_limit_mbps, blocked_websites) VALUES " +
+                    "(2, 'MacBook Pro 16\"', 'Sarah Chen', 'Laptop', 80.0, '192.168.1.115', 'A4:83:E7:22:90:5F', 'Connected', 0, 9.20, 28.50, 100.0, '')," +
+                    "(3, 'iPhone 15 Pro', 'Alex Morgan', 'Mobile', 40.0, '192.168.1.120', 'DC:A9:04:77:33:1B', 'Connected', 0, 4.10, 18.25, 50.0, '')," +
+                    "(4, 'Galaxy S24 Ultra (Phone B)', 'Guest User', 'Mobile', 30.0, '192.168.137.45', '88:AE:DD:3F:12:9A', 'Connected', 0, 3.40, 14.60, 35.0, '')," +
+                    "(5, 'LG OLED 65\" 4K TV', 'Living Room Media', 'Smart TV', 150.0, '192.168.1.140', 'B4:E6:2D:5C:88:12', 'Connected', 0, 2.10, 92.40, 80.0, '')," +
+                    "(6, 'PlayStation 5 Console', 'Gaming Den', 'Gaming', 100.0, '192.168.1.155', '70:9E:29:4D:EE:01', 'Connected', 0, 16.30, 118.50, 100.0, '')," +
+                    "(7, 'EZVIZ 4K Security Cam', 'External Entrance', 'IoT Device', 25.0, '192.168.1.188', 'F4:8C:50:9B:AA:77', 'Connected', 0, 22.80, 0.45, 15.0, '')," +
+                    "(8, 'iPad Air 5th Gen', 'Elena Rostova', 'Tablet', 30.0, '192.168.1.132', '9C:F3:87:66:10:44', 'Disconnected', 0, 1.20, 8.10, 40.0, '')," +
+                    "(9, 'HomeAssistant IoT Gateway', 'Smart Automation', 'IoT Device', 10.0, '192.168.1.199', '00:1E:06:44:88:21', 'Connected', 0, 0.90, 1.80, 20.0, '') " +
+                    "ON DUPLICATE KEY UPDATE device_name=VALUES(device_name)");
+            }
+
+            // Seed default website restrictions if none exist
+            java.sql.ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM website_restrictions");
             if (rs.next() && rs.getInt(1) == 0) {
-                stmt.executeUpdate("INSERT INTO devices (device_name, owner_name, device_type, data_limit, ip_address, mac_address, status, is_blocked, upload_gb, download_gb, bandwidth_limit_mbps, blocked_websites) VALUES " +
-                    "('Workstation Pro', 'Alice Smith', 'Desktop', 100.0, '192.168.1.10', '00:1A:2B:3C:4D:5E', 'Connected', 0, 14.50, 48.20, 100.0, 'tiktok.com, casino.com')," +
-                    "('MacBook Air', 'Bob Johnson', 'Laptop', 50.0, '192.168.1.14', '70:85:C2:A1:B2:C3', 'Connected', 0, 5.80, 29.40, 50.0, 'reddit.com')," +
-                    "('iPhone 15', 'Alice Smith', 'Mobile', 30.0, '192.168.1.25', 'AC:DE:48:12:34:56', 'Connected', 0, 3.10, 18.90, 25.0, '')," +
-                    "('Smart TV 4K', 'Living Room', 'Smart TV', 150.0, '192.168.1.40', 'B4:E6:2D:88:99:AA', 'Connected', 0, 1.20, 94.60, 80.0, '')," +
-                    "('Smart Security Cam', 'Unknown/External', 'Other', 20.0, '192.168.1.88', 'F4:8C:50:AA:BB:CC', 'Connected', 0, 18.90, 2.30, 10.0, '')"
-                );
-
-                String today = java.time.LocalDate.now().toString();
-                String yesterday = java.time.LocalDate.now().minusDays(1).toString();
-                String dayBefore = java.time.LocalDate.now().minusDays(2).toString();
-
-                stmt.executeUpdate("INSERT INTO usage_records (device_id, usage_date, data_used, upload_gb, download_gb) VALUES " +
-                    "(1, '" + today + "', 6.50, 1.50, 5.00)," +
-                    "(2, '" + today + "', 4.20, 0.80, 3.40)," +
-                    "(3, '" + today + "', 2.10, 0.40, 1.70)," +
-                    "(4, '" + today + "', 12.80, 0.30, 12.50)," +
-                    "(5, '" + today + "', 14.20, 13.80, 0.40)," +
-                    "(1, '" + yesterday + "', 8.40, 2.10, 6.30)," +
-                    "(2, '" + yesterday + "', 5.10, 1.10, 4.00)," +
-                    "(3, '" + yesterday + "', 3.00, 0.50, 2.50)," +
-                    "(4, '" + yesterday + "', 15.60, 0.40, 15.20)," +
-                    "(1, '" + dayBefore + "', 7.20, 1.80, 5.40)," +
-                    "(2, '" + dayBefore + "', 4.80, 0.90, 3.90)"
-                );
-
                 stmt.executeUpdate("INSERT INTO website_restrictions (device_id, domain_name, category, action) VALUES " +
                     "(0, 'gambling-site.com', 'Gambling', 'BLOCK')," +
                     "(0, 'malware-host.net', 'Security Risk', 'BLOCK')," +
-                    "(1, 'tiktok.com', 'Social Media', 'BLOCK')," +
-                    "(2, 'torrent-downloads.org', 'P2P File Sharing', 'BLOCK')"
+                    "(0, 'tiktok.com', 'Social Media', 'BLOCK')," +
+                    "(0, 'torrent-downloads.org', 'P2P File Sharing', 'BLOCK')"
                 );
             }
         } catch (SQLException ignored) {}
     }
 
+    public static boolean isMysqlAvailable() {
+        if (mysqlAvailable) return true;
+        try (Connection c = getConnection()) {
+            return c != null && !c.isClosed();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public static Connection getConnection() {
-        if (!mysqlAvailable) return null;
         try {
-            return DriverManager.getConnection(MYSQL_URL, USER, PASSWORD);
+            Connection conn = DriverManager.getConnection(MYSQL_URL, USER, PASSWORD);
+            if (!mysqlAvailable) {
+                mysqlAvailable = true;
+                System.out.println("✅ Real-time connection to XAMPP MySQL (wifi_usage_monitor) active.");
+            }
+            return conn;
         } catch (Exception e) {
             mysqlAvailable = false;
             return null;

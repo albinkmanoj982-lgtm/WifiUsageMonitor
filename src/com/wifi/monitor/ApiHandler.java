@@ -64,6 +64,8 @@ public class ApiHandler implements HttpHandler {
                 case "/api/blocking/events": response = handleBlockingEvents(exchange, method); break;
                 case "/api/network/info":    response = handleNetworkInfo(exchange, method); break;
                 case "/api/ai/anomalies":    response = handleAiAnomalies(exchange, method); break;
+                case "/api/database/status": response = handleDatabaseStatus(exchange, method); break;
+                case "/api/admin/elevate":   response = handleAdminElevate(exchange, method); break;
                 default:                  response = "{\"error\":\"Unknown route\"}";
             }
         } catch (Exception e) {
@@ -140,10 +142,10 @@ public class ApiHandler implements HttpHandler {
         double totalDataUsed = traffic.getOrDefault("total", 0.0);
 
         StringBuilder sb = new StringBuilder("{");
-        sb.append("\"totalDataUsed\":").append(String.format("%.2f", totalDataUsed)).append(",");
-        sb.append("\"uploadUsage\":").append(String.format("%.2f", totalUpload)).append(",");
-        sb.append("\"downloadUsage\":").append(String.format("%.2f", totalDownload)).append(",");
-        sb.append("\"todayUsage\":").append(String.format("%.2f", todayUsage)).append(",");
+        sb.append("\"totalDataUsed\":").append(String.format(Locale.US, "%.2f", totalDataUsed)).append(",");
+        sb.append("\"uploadUsage\":").append(String.format(Locale.US, "%.2f", totalUpload)).append(",");
+        sb.append("\"downloadUsage\":").append(String.format(Locale.US, "%.2f", totalDownload)).append(",");
+        sb.append("\"todayUsage\":").append(String.format(Locale.US, "%.2f", todayUsage)).append(",");
         sb.append("\"totalDevicesCount\":").append(devices.size()).append(",");
 
         StringBuilder deviceListSb = new StringBuilder("[");
@@ -159,12 +161,15 @@ public class ApiHandler implements HttpHandler {
                 .append("\"deviceId\":").append(d.getDeviceId()).append(",")
                 .append("\"deviceName\":\"").append(escapeJson(d.getDeviceName())).append("\",")
                 .append("\"ownerName\":\"").append(escapeJson(d.getOwnerName())).append("\",")
+                .append("\"deviceType\":\"").append(escapeJson(d.getDeviceType())).append("\",")
                 .append("\"ipAddress\":\"").append(escapeJson(d.getIpAddress())).append("\",")
                 .append("\"macAddress\":\"").append(escapeJson(d.getMacAddress())).append("\",")
-                .append("\"uploadGb\":").append(String.format("%.2f", d.getUploadGb())).append(",")
-                .append("\"downloadGb\":").append(String.format("%.2f", d.getDownloadGb())).append(",")
-                .append("\"totalUsage\":").append(String.format("%.2f", devTotal)).append(",")
+                .append("\"status\":\"").append(escapeJson(d.getStatus())).append("\",")
+                .append("\"uploadGb\":").append(String.format(Locale.US, "%.2f", d.getUploadGb())).append(",")
+                .append("\"downloadGb\":").append(String.format(Locale.US, "%.2f", d.getDownloadGb())).append(",")
+                .append("\"totalUsage\":").append(String.format(Locale.US, "%.2f", devTotal)).append(",")
                 .append("\"dataLimit\":").append(d.getDataLimit()).append(",")
+                .append("\"bandwidthLimitMbps\":").append(d.getBandwidthLimitMbps()).append(",")
                 .append("\"isBlocked\":").append(d.isBlocked())
                 .append("}");
             if (i < devices.size() - 1) deviceListSb.append(",");
@@ -331,6 +336,16 @@ public class ApiHandler implements HttpHandler {
     // ── REPORT ──────────────────────────────────────────────────────────────
     private String handleReport(HttpExchange ex, String method) {
         Map<String, String> params = parseQueryString(ex.getRequestURI().getQuery());
+        String from = params.get("from");
+        String to = params.get("to");
+        String period = params.get("period");
+
+        if (from != null && to != null && !from.isEmpty() && !to.isEmpty()) {
+            String label = period != null ? period : "Custom Period";
+            String reportText = usageDAO.getRangeReportText(from, to, label);
+            return "{\"report\":\"" + escapeJson(reportText) + "\"}";
+        }
+
         String date = params.getOrDefault("date", java.time.LocalDate.now().toString());
         String reportText = usageDAO.getDailyReportText(date);
         return "{\"report\":\"" + escapeJson(reportText) + "\"}";
@@ -490,8 +505,19 @@ public class ApiHandler implements HttpHandler {
                 + "\"localIp\":\"" + escapeJson(localIp) + "\","
                 + "\"hotspotIp\":\"" + escapeJson(hotspotIp) + "\","
                 + "\"dnsServer\":{\"running\":" + dnsRunning + ",\"port\":" + dnsPort + ",\"status\":\"" + escapeJson(dnsStatus) + "\"},"
-                + "\"proxyServer\":{\"running\":" + proxyRunning + ",\"port\":" + proxyPort + ",\"status\":\"" + escapeJson(proxyStatus) + "\"}"
+                + "\"proxyServer\":{\"running\":" + proxyRunning + ",\"port\":" + proxyPort + ",\"status\":\"" + escapeJson(proxyStatus) + "\"},"
+                + "\"isAdmin\":" + WindowsFirewallManager.isElevated() + ","
+                + "\"firewallStatus\":\"" + escapeJson(WindowsFirewallManager.getStatusMessage()) + "\","
+                + "\"hostsStatus\":\"" + escapeJson(WindowsFirewallManager.getHostsStatusMessage()) + "\""
                 + "}";
+    }
+
+    private String handleAdminElevate(HttpExchange ex, String method) {
+        new Thread(() -> {
+            try { Thread.sleep(600); } catch (Exception ignored) {}
+            WindowsFirewallManager.relaunchAsAdmin();
+        }).start();
+        return "{\"success\":true,\"message\":\"Triggered UAC prompt to elevate application...\"}";
     }
 
     // ── AI ABNORMAL USAGE DETECTION ENGINE ──────────────────────────────────
@@ -573,5 +599,67 @@ public class ApiHandler implements HttpHandler {
         if (s == null) return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"")
                 .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+    }
+
+    // ── DATABASE & STORAGE STATUS ──────────────────────────────────────────
+    private String handleDatabaseStatus(HttpExchange ex, String method) {
+        boolean isMysql = DatabaseConnection.isMysqlAvailable();
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"connected\":").append(isMysql).append(",");
+        sb.append("\"host\":\"localhost:3306\",");
+        sb.append("\"database\":\"wifi_usage_monitor\",");
+        sb.append("\"username\":\"root\",");
+        sb.append("\"driver\":\"com.mysql.cj.jdbc.Driver\",");
+
+        int loginCount = 0;
+        int deviceCount = 0;
+        int usageCount = 0;
+        int rulesCount = 0;
+        int logCount = 0;
+
+        if (isMysql) {
+            sb.append("\"engine\":\"MySQL 8.x (InnoDB)\",");
+            sb.append("\"statusText\":\"MySQL Active & Connected (Port 3306)\",");
+            java.sql.Connection conn = DatabaseConnection.getConnection();
+            if (conn != null) {
+                try (java.sql.Statement stmt = conn.createStatement()) {
+                    try (java.sql.ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM login")) {
+                        if (rs.next()) loginCount = rs.getInt(1);
+                    } catch (Exception ignored) {}
+                    try (java.sql.ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM devices")) {
+                        if (rs.next()) deviceCount = rs.getInt(1);
+                    } catch (Exception ignored) {}
+                    try (java.sql.ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM usage_records")) {
+                        if (rs.next()) usageCount = rs.getInt(1);
+                    } catch (Exception ignored) {}
+                    try (java.sql.ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM website_restrictions")) {
+                        if (rs.next()) rulesCount = rs.getInt(1);
+                    } catch (Exception ignored) {}
+                    try (java.sql.ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM blocked_request_logs")) {
+                        if (rs.next()) logCount = rs.getInt(1);
+                    } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                } finally {
+                    try { conn.close(); } catch (Exception ignored) {}
+                }
+            }
+        } else {
+            sb.append("\"engine\":\"In-Memory RAM Cache Engine (Fallback)\",");
+            sb.append("\"statusText\":\"In-Memory RAM Cache (MySQL not active on :3306)\",");
+            deviceCount = deviceDAO.getAllDevices().size();
+            usageCount = usageDAO.getAllUsageRecords().size();
+            rulesCount = restrictionDAO.getAllRestrictions().size();
+            logCount = blockedLogDAO.getRecentLogs(1000).size();
+            loginCount = 1;
+        }
+
+        sb.append("\"tables\":[");
+        sb.append("{\"name\":\"login\",\"desc\":\"User Authentication & Credentials\",\"rows\":").append(loginCount).append("},");
+        sb.append("{\"name\":\"devices\",\"desc\":\"Registered & Discovered Devices\",\"rows\":").append(deviceCount).append("},");
+        sb.append("{\"name\":\"usage_records\",\"desc\":\"Daily Network Traffic Records\",\"rows\":").append(usageCount).append("},");
+        sb.append("{\"name\":\"website_restrictions\",\"desc\":\"Domain Interception Rules\",\"rows\":").append(rulesCount).append("},");
+        sb.append("{\"name\":\"blocked_request_logs\",\"desc\":\"Real-Time Interception Logs\",\"rows\":").append(logCount).append("}");
+        sb.append("]}");
+        return sb.toString();
     }
 }

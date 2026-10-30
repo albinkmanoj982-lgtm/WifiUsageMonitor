@@ -12,24 +12,41 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class UsageDAO {
 
     private static final List<UsageRecord> inMemoryRecords = new CopyOnWriteArrayList<>();
-    private static final AtomicInteger usageIdCounter = new AtomicInteger(20);
+    private static final AtomicInteger usageIdCounter = new AtomicInteger(100);
 
     static {
-        String today = LocalDate.now().toString();
-        String yesterday = LocalDate.now().minusDays(1).toString();
-        String dayBefore = LocalDate.now().minusDays(2).toString();
+        LocalDate today = LocalDate.now();
 
-        inMemoryRecords.add(new UsageRecord(1, 1, today, 6.50, 1.50, 5.00));
-        inMemoryRecords.add(new UsageRecord(2, 2, today, 4.20, 0.80, 3.40));
-        inMemoryRecords.add(new UsageRecord(3, 3, today, 2.10, 0.40, 1.70));
-        inMemoryRecords.add(new UsageRecord(4, 4, today, 12.80, 0.30, 12.50));
-        inMemoryRecords.add(new UsageRecord(5, 5, today, 14.20, 13.80, 0.40)); // Anomaly!
-        inMemoryRecords.add(new UsageRecord(6, 1, yesterday, 8.40, 2.10, 6.30));
-        inMemoryRecords.add(new UsageRecord(7, 2, yesterday, 5.10, 1.10, 4.00));
-        inMemoryRecords.add(new UsageRecord(8, 3, yesterday, 3.00, 0.50, 2.50));
-        inMemoryRecords.add(new UsageRecord(9, 4, yesterday, 15.60, 0.40, 15.20));
-        inMemoryRecords.add(new UsageRecord(10, 1, dayBefore, 7.20, 1.80, 5.40));
-        inMemoryRecords.add(new UsageRecord(11, 2, dayBefore, 4.80, 0.90, 3.90));
+        // Device profiles: [deviceId, dailyAvgDl, dailyAvgUl, todayDl, todayUl]
+        double[][] profiles = new double[][] {
+            { 1, 2.50, 0.90, 2.60, 0.80 }, // ASUS ROG Laptop
+            { 2, 2.10, 0.65, 2.20, 0.60 }, // MacBook Pro 16"
+            { 3, 1.30, 0.30, 1.40, 0.30 }, // iPhone 15 Pro
+            { 4, 1.05, 0.25, 1.10, 0.25 }, // Galaxy S24 Ultra (Phone B)
+            { 5, 6.60, 0.15, 9.50, 0.20 }, // LG OLED 4K TV
+            { 6, 8.40, 1.15, 14.20, 2.10 }, // PlayStation 5
+            { 7, 0.03, 1.62, 0.05, 2.35 }, // EZVIZ 4K Security Cam (Upload Surge)
+            { 8, 0.58, 0.08, 0.60, 0.10 }, // iPad Air
+            { 9, 0.13, 0.06, 0.15, 0.08 }  // HomeAssistant IoT Hub
+        };
+
+        // Seed 14 days of daily records for all devices
+        for (int dayOffset = 13; dayOffset >= 0; dayOffset--) {
+            LocalDate recordDate = today.minusDays(dayOffset);
+            String dateStr = recordDate.toString();
+            boolean isToday = (dayOffset == 0);
+
+            for (double[] prof : profiles) {
+                int devId = (int) prof[0];
+                double dl = isToday ? prof[3] : (prof[1] * (0.85 + (Math.sin(dayOffset + devId) * 0.25)));
+                double ul = isToday ? prof[4] : (prof[2] * (0.85 + (Math.cos(dayOffset + devId) * 0.25)));
+                dl = Math.round(dl * 100.0) / 100.0;
+                ul = Math.round(ul * 100.0) / 100.0;
+                double total = Math.round((dl + ul) * 100.0) / 100.0;
+
+                inMemoryRecords.add(new UsageRecord(usageIdCounter.incrementAndGet(), devId, dateStr, total, ul, dl));
+            }
+        }
     }
 
     public void addUsageRecord(int deviceId, String date, double dataUsed) {
@@ -103,6 +120,23 @@ public class UsageDAO {
                     inMemoryRecords.clear();
                     inMemoryRecords.addAll(records);
                     return records;
+                } else if (!inMemoryRecords.isEmpty()) {
+                    String insertSql = "INSERT INTO usage_records (device_id, usage_date, data_used, upload_gb, download_gb) VALUES (?, ?, ?, ?, ?)";
+                    try (PreparedStatement ins = conn.prepareStatement(insertSql)) {
+                        for (UsageRecord r : inMemoryRecords) {
+                            ins.setInt(1, r.getDeviceId());
+                            ins.setString(2, r.getUsageDate());
+                            ins.setDouble(3, r.getDataUsed());
+                            ins.setDouble(4, r.getUploadGb());
+                            ins.setDouble(5, r.getDownloadGb());
+                            ins.addBatch();
+                        }
+                        ins.executeBatch();
+                        System.out.println("✅ Seeded initial usage records to XAMPP MySQL usage_records table.");
+                    } catch (SQLException e) {
+                        System.out.println("Notice DB seed usage_records: " + e.getMessage());
+                    }
+                    return new ArrayList<>(inMemoryRecords);
                 }
             } catch (SQLException ignored) {}
             finally { try { conn.close(); } catch (Exception ignored) {} }
@@ -187,6 +221,65 @@ public class UsageDAO {
 
         if (!hasData) {
             sb.append("No network traffic logged for date: ").append(date).append("\n");
+        } else {
+            for (Map.Entry<Integer, double[]> entry : devTraffic.entrySet()) {
+                Device d = devMap.get(entry.getKey());
+                String name = d != null ? d.getDeviceName() : "Unknown";
+                String owner = d != null ? d.getOwnerName() : "Unknown";
+                double[] tr = entry.getValue();
+
+                sb.append(String.format("Device #%d: %s (%s)\n", entry.getKey(), name, owner));
+                sb.append(String.format("   ├── Upload:   %.2f GB\n", tr[0]));
+                sb.append(String.format("   ├── Download: %.2f GB\n", tr[1]));
+                sb.append(String.format("   └── Total:    %.2f GB\n\n", tr[2]));
+            }
+
+            sb.append("----------------------------------------------------\n");
+            sb.append(String.format("GRAND TOTAL UPLOAD:   %.2f GB\n", grandUpload));
+            sb.append(String.format("GRAND TOTAL DOWNLOAD: %.2f GB\n", grandDownload));
+            sb.append(String.format("NETWORK TOTAL USAGE:  %.2f GB\n", grandTotal));
+            sb.append("----------------------------------------------------\n");
+        }
+        return sb.toString();
+    }
+
+    public String getRangeReportText(String fromDate, String toDate, String periodLabel) {
+        List<UsageRecord> records = getAllUsageRecords();
+        DeviceDAO deviceDAO = new DeviceDAO();
+        List<Device> devices = deviceDAO.getAllDevices();
+        Map<Integer, Device> devMap = new HashMap<>();
+        for (Device d : devices) devMap.put(d.getDeviceId(), d);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("====================================================\n");
+        sb.append("         WIFI USAGE MONITOR — AUDIT REPORT          \n");
+        sb.append("         Period: ").append(fromDate).append(" to ").append(toDate);
+        if (periodLabel != null && !periodLabel.isEmpty()) {
+            sb.append(" (").append(periodLabel).append(")");
+        }
+        sb.append("\n");
+        sb.append("====================================================\n\n");
+
+        double grandTotal = 0, grandUpload = 0, grandDownload = 0;
+        boolean hasData = false;
+
+        Map<Integer, double[]> devTraffic = new HashMap<>(); // devId -> [ul, dl, total]
+        for (UsageRecord r : records) {
+            String uDate = r.getUsageDate();
+            if (uDate != null && uDate.compareTo(fromDate) >= 0 && uDate.compareTo(toDate) <= 0) {
+                hasData = true;
+                double[] tr = devTraffic.computeIfAbsent(r.getDeviceId(), k -> new double[3]);
+                tr[0] += r.getUploadGb();
+                tr[1] += r.getDownloadGb();
+                tr[2] += r.getDataUsed();
+                grandUpload += r.getUploadGb();
+                grandDownload += r.getDownloadGb();
+                grandTotal += r.getDataUsed();
+            }
+        }
+
+        if (!hasData) {
+            sb.append("No network traffic logged for period: ").append(fromDate).append(" to ").append(toDate).append("\n");
         } else {
             for (Map.Entry<Integer, double[]> entry : devTraffic.entrySet()) {
                 Device d = devMap.get(entry.getKey());
